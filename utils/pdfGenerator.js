@@ -24,17 +24,27 @@ const generateInvoicePDF = async (req, res) => {
 
         // Set response headers
         res.setHeader('Content-Type', 'application/pdf');
+
+        const safeCustomerName = invoice.customer.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
+        const prefix = invoice.type === 'QUOTATION' ? 'RNV-QTN' : 'RNV-INV';
         res.setHeader(
             'Content-Disposition',
-            `attachment; filename=invoice-${invoice.invoiceNumber}.pdf`
+            `attachment; filename=${prefix}-${invoice.invoiceNumber}-${safeCustomerName}.pdf`
         );
 
         // Pipe PDF to response
         doc.pipe(res);
 
+        // Font paths (Windows standard)
+        const fontRegular = 'C:/Windows/Fonts/arial.ttf';
+        const fontBold = 'C:/Windows/Fonts/arialbd.ttf';
+
         // Helper function to format currency
         const formatCurrency = (amount) => {
-            return `₹${amount.toFixed(2)}`;
+            return `\u20B9 ${new Intl.NumberFormat('en-IN', {
+                minimumFractionDigits: 2,
+                maximumFractionDigits: 2
+            }).format(amount)}`;
         };
 
         // Helper function to format date
@@ -49,11 +59,13 @@ const generateInvoicePDF = async (req, res) => {
 
         // Header
         doc
+            .font(fontBold)
             .fontSize(24)
             .fillColor(primaryColor)
-            .text(invoice.business.businessName, 50, 50, { bold: true });
+            .text(invoice.business.businessName, 50, 50);
 
         doc
+            .font(fontRegular)
             .fontSize(10)
             .fillColor(secondaryColor)
             .text(
@@ -66,7 +78,7 @@ const generateInvoicePDF = async (req, res) => {
                 `${invoice.business.address?.state || ''} - ${invoice.business.address?.pincode || ''
                 }`,
                 50,
-                95
+                75 + 20
             )
             .text(`GSTIN: ${invoice.business.gstin}`, 50, 110)
             .text(`Phone: ${invoice.business.contact?.phone || ''}`, 50, 125)
@@ -74,6 +86,7 @@ const generateInvoicePDF = async (req, res) => {
 
         // Invoice title
         doc
+            .font(fontBold)
             .fontSize(20)
             .fillColor(accentColor)
             .text(
@@ -84,10 +97,19 @@ const generateInvoicePDF = async (req, res) => {
             );
 
         // Invoice details
+        const getDisplayNumber = (num) => {
+            const typePrefix = invoice.type === 'QUOTATION' ? 'QTN' : 'INV';
+            const rnvPrefix = `RNV-${typePrefix}-`;
+
+            if (num.startsWith('RNV-')) return num;
+            if (num.startsWith(`${typePrefix}-`)) return `RNV-${num}`;
+            return `${rnvPrefix}${num}`;
+        };
+
         doc
             .fontSize(10)
             .fillColor(secondaryColor)
-            .text(`${invoice.type === 'QUOTATION' ? 'Quotation No' : 'Invoice No'}: ${invoice.invoiceNumber}`, 400, 80, { align: 'right' })
+            .text(`${invoice.type === 'QUOTATION' ? 'Quotation No' : 'Invoice No'}: ${getDisplayNumber(invoice.invoiceNumber)}`, 400, 80, { align: 'right' })
             .text(`Date: ${formatDate(invoice.invoiceDate)}`, 400, 95, {
                 align: 'right',
             });
@@ -96,6 +118,23 @@ const generateInvoicePDF = async (req, res) => {
             doc.text(`Due Date: ${formatDate(invoice.dueDate)}`, 400, 110, {
                 align: 'right',
             });
+        }
+
+        // E-way Bill details if present
+        if (invoice.ewayBillNo) {
+            doc.text(`E-Way Bill No: ${invoice.ewayBillNo}`, 400, 125, {
+                align: 'right',
+            });
+            if (invoice.vehicleNo) {
+                doc.text(`Vehicle No: ${invoice.vehicleNo}`, 400, 140, {
+                    align: 'right',
+                });
+            }
+            if (invoice.transportMode) {
+                doc.text(`Mode: ${invoice.transportMode}`, 400, 155, {
+                    align: 'right',
+                });
+            }
         }
 
         // Line separator
@@ -110,11 +149,11 @@ const generateInvoicePDF = async (req, res) => {
         doc
             .fontSize(12)
             .fillColor(primaryColor)
-            .text('Bill To:', 50, 190, { bold: true });
+            .font(fontBold)
+            .text('Bill To:', 50, 190);
 
         doc
-            .fontSize(10)
-            .fillColor(secondaryColor)
+            .font(fontRegular)
             .text(invoice.customer.name, 50, 210)
             .text(
                 `${invoice.customer.address?.street || ''}, ${invoice.customer.address?.city || ''
@@ -153,7 +192,7 @@ const generateInvoicePDF = async (req, res) => {
             .fill();
 
         // Table header text
-        doc.fontSize(10).fillColor(primaryColor).font('Helvetica-Bold');
+        doc.fontSize(10).fillColor(primaryColor).font(fontBold);
         tableHeaders.forEach((header) => {
             doc.text(header.label, header.x, tableTop, {
                 width: header.width,
@@ -171,7 +210,7 @@ const generateInvoicePDF = async (req, res) => {
 
         // Table rows
         let yPosition = tableTop + 25;
-        doc.fontSize(9).fillColor(secondaryColor).font('Helvetica');
+        doc.fontSize(9).fillColor(secondaryColor).font(fontRegular);
 
         invoice.items.forEach((item, index) => {
             const processes = item.processes || [];
@@ -216,6 +255,16 @@ const generateInvoicePDF = async (req, res) => {
             yPosition += rowHeight;
         });
 
+        // Helper to check for space and add page
+        const checkPageBreak = (neededHeight) => {
+            if (yPosition + neededHeight > 750) {
+                doc.addPage();
+                yPosition = 50;
+                return true;
+            }
+            return false;
+        };
+
         // Table footer line
         doc
             .strokeColor('#BDC3C7')
@@ -224,10 +273,18 @@ const generateInvoicePDF = async (req, res) => {
             .lineTo(550, yPosition)
             .stroke();
 
-        yPosition += 15;
+        yPosition += 20;
+
+        // Calculate height needed for totals
+        let totalsHeight = 80; // Basic height for Subtotal and Total
+        if (invoice.cgst > 0) totalsHeight += 40;
+        if (invoice.igst > 0) totalsHeight += 20;
+        if (invoice.paidAmount > 0) totalsHeight += 40;
+
+        checkPageBreak(totalsHeight);
 
         // Totals
-        doc.fontSize(10).fillColor(secondaryColor);
+        doc.fontSize(10).fillColor(secondaryColor).font(fontRegular);
 
         doc.text('Subtotal:', 400, yPosition);
         doc.text(formatCurrency(invoice.subtotal), 460, yPosition, {
@@ -272,15 +329,15 @@ const generateInvoicePDF = async (req, res) => {
         yPosition += 10;
 
         // Grand total
-        doc.fontSize(12).fillColor(primaryColor);
-        doc.text('Total:', 400, yPosition, { bold: true });
+        doc.fontSize(12).fillColor(primaryColor).font(fontBold);
+        doc.text('Total:', 400, yPosition);
         doc.text(formatCurrency(invoice.total), 460, yPosition, {
             width: 90,
             align: 'right',
             bold: true,
         });
 
-        yPosition += 35;
+        yPosition += 40;
 
         // Value in Words
         const numberToWords = (num) => {
@@ -305,20 +362,28 @@ const generateInvoicePDF = async (req, res) => {
             return str + 'Only';
         };
 
+        const words = numberToWords(invoice.total);
+        const wordsHeight = doc.heightOfString(words, { width: 400 }) + 20;
+
+        checkPageBreak(wordsHeight);
+
         doc
             .fontSize(10)
             .fillColor(primaryColor)
-            .text('Value in Words:', 50, yPosition, { bold: true });
+            .font(fontBold)
+            .text('Value in Words:', 50, yPosition);
 
         doc
             .fontSize(10)
             .fillColor(secondaryColor)
-            .text(numberToWords(invoice.total), 135, yPosition, { width: 400 });
+            .font(fontRegular)
+            .text(words, 135, yPosition, { width: 400 });
 
-        yPosition += 25;
+        yPosition += wordsHeight;
 
         // Payment status
         if (invoice.paidAmount > 0) {
+            checkPageBreak(50);
             doc.fontSize(10).fillColor(secondaryColor);
             doc.text('Paid:', 400, yPosition);
             doc.text(formatCurrency(invoice.paidAmount), 460, yPosition, {
@@ -337,48 +402,52 @@ const generateInvoicePDF = async (req, res) => {
 
         // Notes
         if (invoice.notes) {
-            yPosition += 20;
-            doc.fontSize(10).fillColor(primaryColor).text('Notes:', 50, yPosition);
+            const notesHeight = doc.heightOfString(invoice.notes, { width: 500 }) + 40;
+            checkPageBreak(notesHeight);
+
+            doc.fontSize(10).fillColor(primaryColor).font(fontBold).text('Notes:', 50, yPosition);
             yPosition += 15;
             doc
                 .fontSize(9)
                 .fillColor(secondaryColor)
+                .font(fontRegular)
                 .text(invoice.notes, 50, yPosition, { width: 500 });
+            yPosition += notesHeight - 15;
         }
 
         // Terms and conditions
         if (invoice.termsAndConditions) {
-            yPosition += 40;
-            if (yPosition > 700) {
-                doc.addPage();
-                yPosition = 50;
-            }
+            const termsHeight = doc.heightOfString(invoice.termsAndConditions, { width: 500 }) + 40;
+            checkPageBreak(termsHeight);
+
             doc
                 .fontSize(10)
                 .fillColor(primaryColor)
+                .font(fontBold)
                 .text('Terms & Conditions:', 50, yPosition);
             yPosition += 15;
             doc
                 .fontSize(9)
                 .fillColor(secondaryColor)
+                .font(fontRegular)
                 .text(invoice.termsAndConditions, 50, yPosition, { width: 500 });
+            yPosition += termsHeight - 15;
         }
 
         // Bank details
         if (invoice.business.bankDetails?.accountNumber) {
-            yPosition += 40;
-            if (yPosition > 700) {
-                doc.addPage();
-                yPosition = 50;
-            }
+            checkPageBreak(100);
+
             doc
                 .fontSize(10)
                 .fillColor(primaryColor)
+                .font(fontBold)
                 .text('Bank Details:', 50, yPosition);
             yPosition += 15;
             doc
                 .fontSize(9)
                 .fillColor(secondaryColor)
+                .font(fontRegular)
                 .text(
                     `Account Name: ${invoice.business.bankDetails.accountName || ''}`,
                     50,
@@ -405,15 +474,16 @@ const generateInvoicePDF = async (req, res) => {
             );
         }
 
-        // Footer
+        // Footer - ONLY on the last page
         const pageHeight = doc.page.height;
         doc
             .fontSize(8)
             .fillColor('#95A5A6')
+            .font(fontRegular)
             .text(
                 'This is a computer-generated invoice and does not require a signature.',
                 50,
-                pageHeight - 50,
+                pageHeight - 40,
                 { align: 'center', width: 500 }
             );
 

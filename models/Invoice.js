@@ -112,6 +112,27 @@ const invoiceSchema = new mongoose.Schema(
         termsAndConditions: {
             type: String,
         },
+        // E-way Bill Details
+        ewayBillNo: {
+            type: String,
+        },
+        transportMode: {
+            type: String,
+            enum: ['', 'Road', 'Rail', 'Air', 'Ship'],
+            default: '',
+        },
+        vehicleNo: {
+            type: String,
+        },
+        transporterName: {
+            type: String,
+        },
+        transporterId: {
+            type: String,
+        },
+        distance: {
+            type: Number,
+        },
     },
     {
         timestamps: true,
