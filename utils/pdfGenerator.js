@@ -1,5 +1,7 @@
 const PDFDocument = require('pdfkit');
 const Invoice = require('../models/Invoice');
+const fs = require('fs');
+const path = require('path');
 
 // @desc    Generate invoice PDF
 // @route   GET /api/invoices/:id/pdf
@@ -12,6 +14,10 @@ const generateInvoicePDF = async (req, res) => {
 
         if (!invoice) {
             return res.status(404).json({ message: 'Invoice not found' });
+        }
+
+        if (!invoice.business) {
+            return res.status(400).json({ message: 'Business profile not found. Please complete your profile first.' });
         }
 
         // Check if invoice belongs to user
@@ -35,13 +41,32 @@ const generateInvoicePDF = async (req, res) => {
         // Pipe PDF to response
         doc.pipe(res);
 
-        // Font paths (Windows standard)
-        const fontRegular = 'C:/Windows/Fonts/arial.ttf';
-        const fontBold = 'C:/Windows/Fonts/arialbd.ttf';
+        // Determine Font paths based on environment
+        let fontRegular = 'Helvetica';
+        let fontBold = 'Helvetica-Bold';
+
+        const windowsFonts = {
+            regular: 'C:/Windows/Fonts/arial.ttf',
+            bold: 'C:/Windows/Fonts/arialbd.ttf'
+        };
+
+        const linuxFonts = {
+            regular: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+            bold: '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
+        };
+
+        if (fs.existsSync(windowsFonts.regular)) {
+            fontRegular = windowsFonts.regular;
+            fontBold = fs.existsSync(windowsFonts.bold) ? windowsFonts.bold : fontRegular;
+        } else if (fs.existsSync(linuxFonts.regular)) {
+            fontRegular = linuxFonts.regular;
+            fontBold = fs.existsSync(linuxFonts.bold) ? linuxFonts.bold : fontRegular;
+        }
 
         // Helper function to format currency
         const formatCurrency = (amount) => {
-            return `\u20B9 ${new Intl.NumberFormat('en-IN', {
+            const sym = fontRegular !== 'Helvetica' ? '\u20B9' : 'Rs.';
+            return `${sym} ${new Intl.NumberFormat('en-IN', {
                 minimumFractionDigits: 2,
                 maximumFractionDigits: 2
             }).format(amount)}`;
