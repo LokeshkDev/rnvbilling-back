@@ -52,6 +52,7 @@ const getBusiness = async (req, res) => {
             phone: business.contact?.phone || '',
             website: business.contact?.website || '',
             bankName: business.bankDetails?.bankName || '',
+            accountName: business.bankDetails?.accountName || '',
             accountNumber: business.bankDetails?.accountNumber || '',
             ifscCode: business.bankDetails?.ifscCode || '',
             branchName: business.bankDetails?.branch || '',
@@ -77,6 +78,7 @@ const createOrUpdateBusiness = async (req, res) => {
             phone,
             website,
             bankName,
+            accountName,
             accountNumber,
             ifscCode,
             branchName,
@@ -99,6 +101,7 @@ const createOrUpdateBusiness = async (req, res) => {
             },
             bankDetails: {
                 bankName,
+                accountName,
                 accountNumber,
                 ifscCode,
                 branch: branchName
