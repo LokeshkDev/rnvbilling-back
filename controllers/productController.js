@@ -61,6 +61,7 @@ const createProduct = async (req, res) => {
             stock: Number(req.body.stock),
             lowStockThreshold: Number(req.body.lowStockThreshold || 10),
             gstRate: Number(req.body.taxRate || req.body.gstRate || 18),
+            gstEnabled: req.body.gstEnabled !== undefined ? req.body.gstEnabled : true,
             user: req.user._id,
         };
 
@@ -100,6 +101,9 @@ const updateProduct = async (req, res) => {
         if (req.body.lowStockThreshold !== undefined) productData.lowStockThreshold = Number(req.body.lowStockThreshold);
         if (req.body.taxRate !== undefined || req.body.gstRate !== undefined) {
             productData.gstRate = Number(req.body.taxRate || req.body.gstRate);
+        }
+        if (req.body.gstEnabled !== undefined) {
+            productData.gstEnabled = req.body.gstEnabled;
         }
 
         const updatedProduct = await Product.findByIdAndUpdate(

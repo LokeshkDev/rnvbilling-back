@@ -64,7 +64,7 @@ const getInvoice = async (req, res) => {
 // @access  Private
 const createInvoice = async (req, res) => {
     try {
-        const { customer, customerId, items, type, notes, date, dueDate } = req.body;
+        const { customer, customerId, items, type, notes, date, dueDate, gstEnabled } = req.body;
 
         // Handle input variations (frontend might send 'customer' or 'customerId')
         const finalCustomerId = customerId || customer;
@@ -164,6 +164,7 @@ const createInvoice = async (req, res) => {
             type: type || 'INVOICE',
             notes,
             termsAndConditions: business.termsAndConditions, // Copy default terms
+            gstEnabled: gstEnabled !== undefined ? gstEnabled : true
         });
 
         // Totals are calculated in pre-save hook
@@ -184,7 +185,8 @@ const createInvoice = async (req, res) => {
 
         processedItems.forEach(item => {
             const amount = item.quantity * item.price;
-            const gst = (amount * item.gstRate) / 100;
+            const isGst = (gstEnabled !== undefined) ? gstEnabled : true;
+            const gst = isGst ? ((amount * item.gstRate) / 100) : 0;
             item.amount = amount;
             item.gstAmount = gst;
             item.totalAmount = amount + gst;
@@ -258,7 +260,7 @@ const updateInvoice = async (req, res) => {
         }
 
         // 2. Prepare new data
-        const { customer, customerId, items, type, notes, date, dueDate } = req.body;
+        const { customer, customerId, items, type, notes, date, dueDate, gstEnabled } = req.body;
         const finalCustomerId = customerId || customer || invoice.customer;
 
         // Get business to check logic
@@ -332,13 +334,15 @@ const updateInvoice = async (req, res) => {
         invoice.notes = notes !== undefined ? notes : invoice.notes;
         invoice.invoiceDate = date || invoice.invoiceDate;
         invoice.dueDate = dueDate || invoice.dueDate;
+        if (gstEnabled !== undefined) invoice.gstEnabled = gstEnabled;
 
         // Recalculate Totals
         let totalGst = 0;
         let subtotal = 0;
         processedItems.forEach(item => {
             const amount = item.quantity * item.price;
-            const gst = (amount * item.gstRate) / 100;
+            const isGst = (invoice.gstEnabled !== undefined) ? invoice.gstEnabled : true;
+            const gst = isGst ? ((amount * item.gstRate) / 100) : 0;
             item.amount = amount;
             item.gstAmount = gst;
             item.totalAmount = amount + gst;

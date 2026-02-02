@@ -48,6 +48,10 @@ const productSchema = new mongoose.Schema(
             type: Boolean,
             default: true,
         },
+        gstEnabled: {
+            type: Boolean,
+            default: true,
+        },
     },
     {
         timestamps: true,

@@ -133,6 +133,10 @@ const invoiceSchema = new mongoose.Schema(
         distance: {
             type: Number,
         },
+        gstEnabled: {
+            type: Boolean,
+            default: true,
+        },
     },
     {
         timestamps: true,
@@ -144,7 +148,14 @@ invoiceSchema.pre('save', function () {
     // Calculate item totals
     this.items.forEach((item) => {
         item.amount = (item.quantity || 0) * (item.price || 0);
-        item.gstAmount = (item.amount * (item.gstRate || 0)) / 100;
+        // If GST is disabled, set rate to 0 effectively for calculation
+        // but we might want to preserve the rate in case they re-enable it?
+        // Actually the calculation here is definitive.
+        if (this.gstEnabled === false) {
+            item.gstAmount = 0;
+        } else {
+            item.gstAmount = (item.amount * (item.gstRate || 0)) / 100;
+        }
         item.totalAmount = item.amount + item.gstAmount;
     });
 
