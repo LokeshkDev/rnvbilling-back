@@ -32,35 +32,50 @@ const generateInvoicePDF = async (req, res) => {
         res.setHeader('Content-Type', 'application/pdf');
 
         const safeCustomerName = invoice.customer.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-        const prefix = invoice.type === 'QUOTATION' ? 'RNV-QTN' : 'RNV-INV';
+
+        // Handle filename prefix - if invoiceNumber already has RNV, don't double it
+        let filenamePrefix = '';
+        if (!invoice.invoiceNumber.startsWith('RNV-')) {
+            filenamePrefix = invoice.type === 'QUOTATION' ? 'RNV-QTN-' : 'RNV-INV-';
+        }
+
         res.setHeader(
             'Content-Disposition',
-            `attachment; filename=${prefix}-${invoice.invoiceNumber}-${safeCustomerName}.pdf`
+            `attachment; filename=${filenamePrefix}${invoice.invoiceNumber}-${safeCustomerName}.pdf`
         );
 
         // Pipe PDF to response
         doc.pipe(res);
 
         // Determine Font paths based on environment
-        let fontRegular = 'Helvetica';
-        let fontBold = 'Helvetica-Bold';
+        // Determine Font paths based on environment or theme
+        const theme = invoice.business.theme || {};
+        const baseFont = theme.font || 'Helvetica';
 
-        const windowsFonts = {
-            regular: 'C:/Windows/Fonts/arial.ttf',
-            bold: 'C:/Windows/Fonts/arialbd.ttf'
-        };
+        // If using standard fonts, we don't need paths
+        const standardFonts = ['Helvetica', 'Courier', 'Times-Roman'];
+        let fontRegular = baseFont;
+        let fontBold = `${baseFont}-Bold`;
 
-        const linuxFonts = {
-            regular: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
-            bold: '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
-        };
+        if (!standardFonts.includes(baseFont)) {
+            // Fallback to system fonts logic if it was a custom attempt (though we only offer standard for now)
+            const windowsFonts = {
+                regular: 'C:/Windows/Fonts/arial.ttf',
+                bold: 'C:/Windows/Fonts/arialbd.ttf'
+            };
 
-        if (fs.existsSync(windowsFonts.regular)) {
-            fontRegular = windowsFonts.regular;
-            fontBold = fs.existsSync(windowsFonts.bold) ? windowsFonts.bold : fontRegular;
-        } else if (fs.existsSync(linuxFonts.regular)) {
-            fontRegular = linuxFonts.regular;
-            fontBold = fs.existsSync(linuxFonts.bold) ? linuxFonts.bold : fontRegular;
+            const linuxFonts = {
+                regular: '/usr/share/fonts/truetype/liberation/LiberationSans-Regular.ttf',
+                bold: '/usr/share/fonts/truetype/liberation/LiberationSans-Bold.ttf'
+            };
+
+            if (fs.existsSync(windowsFonts.regular)) {
+                fontRegular = windowsFonts.regular;
+                fontBold = fs.existsSync(windowsFonts.bold) ? windowsFonts.bold : fontRegular;
+            } else if (fs.existsSync(linuxFonts.regular)) {
+                fontRegular = linuxFonts.regular;
+                fontBold = fs.existsSync(linuxFonts.bold) ? linuxFonts.bold : fontRegular;
+            }
         }
 
         // Helper function to format currency
@@ -78,20 +93,24 @@ const generateInvoicePDF = async (req, res) => {
         };
 
         // Colors
-        const primaryColor = '#2C3E50';
-        const secondaryColor = '#34495E';
-        const accentColor = '#3498DB';
+        // Colors & Sizes from Theme
+        const primaryColor = theme.primaryColor || '#2C3E50';
+        const secondaryColor = theme.secondaryColor || '#34495E';
+        const accentColor = theme.accentColor || '#3498DB';
+        const businessNameColor = theme.businessNameColor || theme.primaryColor || '#2C3E50';
+        const titleFontSize = theme.titleFontSize || 24;
+        const bodyFontSize = theme.bodyFontSize || 10;
 
         // Header
         doc
             .font(fontBold)
-            .fontSize(24)
-            .fillColor(primaryColor)
+            .fontSize(titleFontSize)
+            .fillColor(businessNameColor)
             .text(invoice.business.businessName, 50, 50);
 
         doc
             .font(fontRegular)
-            .fontSize(10)
+            .fontSize(bodyFontSize)
             .fillColor(secondaryColor)
             .text(
                 `${invoice.business.address?.street || ''}, ${invoice.business.address?.city || ''
@@ -123,10 +142,11 @@ const generateInvoicePDF = async (req, res) => {
 
         // Invoice details
         const getDisplayNumber = (num) => {
+            if (num.startsWith('RNV-')) return num;
+
             const typePrefix = invoice.type === 'QUOTATION' ? 'QTN' : 'INV';
             const rnvPrefix = `RNV-${typePrefix}-`;
 
-            if (num.startsWith('RNV-')) return num;
             if (num.startsWith(`${typePrefix}-`)) return `RNV-${num}`;
             return `${rnvPrefix}${num}`;
         };
@@ -203,11 +223,12 @@ const generateInvoicePDF = async (req, res) => {
         const tableTop = 320;
         const tableHeaders = [
             { label: 'S.No', x: 50, width: 30 },
-            { label: 'Description', x: 80, width: 140 },
-            { label: 'Part no', x: 220, width: 80 },
-            { label: 'Tool', x: 300, width: 100 },
-            { label: 'Price', x: 400, width: 70 },
-            { label: 'Amount', x: 470, width: 80 },
+            { label: 'Description', x: 80, width: 120 },
+            { label: 'Part no', x: 200, width: 60 },
+            { label: 'Tool', x: 260, width: 90 },
+            { label: 'Qty', x: 350, width: 40 },
+            { label: 'Price', x: 390, width: 70 },
+            { label: 'Amount', x: 460, width: 90 },
         ];
 
         // Table header background
@@ -221,7 +242,7 @@ const generateInvoicePDF = async (req, res) => {
         tableHeaders.forEach((header) => {
             doc.text(header.label, header.x, tableTop, {
                 width: header.width,
-                align: header.label === 'Amount' || header.label === 'Price' ? 'right' : 'left',
+                align: header.label === 'Amount' || header.label === 'Price' || header.label === 'Qty' ? 'right' : 'left',
             });
         });
 
@@ -240,7 +261,7 @@ const generateInvoicePDF = async (req, res) => {
         invoice.items.forEach((item, index) => {
             const processes = item.processes || [];
             const processesHeight = processes.length > 0 ? (processes.length * 15) : 20;
-            const rowHeight = Math.max(25, doc.heightOfString(item.productName, { width: 140 }) + 10, processesHeight + 10);
+            const rowHeight = Math.max(25, doc.heightOfString(item.productName, { width: 120 }) + 10, processesHeight + 10);
 
             if (yPosition + rowHeight > 750) {
                 doc.addPage();
@@ -248,24 +269,27 @@ const generateInvoicePDF = async (req, res) => {
             }
 
             doc.text(String(index + 1), 50, yPosition, { width: 30 });
-            doc.text(item.productName, 80, yPosition, { width: 140 });
-            doc.text(item.hsnCode || '-', 220, yPosition, { width: 80 });
+            doc.text(item.productName, 80, yPosition, { width: 120 });
+            doc.text(item.hsnCode || '-', 200, yPosition, { width: 60 });
 
             // Render Processes
             if (processes.length > 0) {
                 let processY = yPosition;
                 processes.forEach(p => {
-                    doc.text(p.name, 300, processY, { width: 100 });
-                    doc.text(formatCurrency(p.price), 400, processY, { width: 70, align: 'right' });
+                    doc.text(p.name, 260, processY, { width: 90 });
+                    doc.text(formatCurrency(p.price), 390, processY, { width: 70, align: 'right' });
                     processY += 15;
                 });
             } else {
-                doc.text(item.tool || '-', 300, yPosition, { width: 100 });
-                doc.text(formatCurrency(item.price), 400, yPosition, { width: 70, align: 'right' });
+                doc.text(item.tool || '-', 260, yPosition, { width: 90 });
+                doc.text(formatCurrency(item.price), 390, yPosition, { width: 70, align: 'right' });
             }
 
-            doc.text(formatCurrency(item.price * item.quantity), 470, yPosition, {
-                width: 80,
+            // Quantity
+            doc.text(String(item.quantity), 350, yPosition, { width: 40, align: 'right' });
+
+            doc.text(formatCurrency(item.price * item.quantity), 460, yPosition, {
+                width: 90,
                 align: 'right',
             });
 

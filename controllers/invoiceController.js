@@ -451,6 +451,88 @@ const getInvoiceStats = async (req, res) => {
     }
 };
 
+// @desc    Convert quotation to invoice
+// @route   POST /api/invoices/:id/convert
+// @access  Private
+const convertToInvoice = async (req, res) => {
+    try {
+        const invoice = await Invoice.findById(req.params.id);
+
+        if (!invoice) {
+            return res.status(404).json({ message: 'Quotation not found' });
+        }
+
+        if (invoice.user.toString() !== req.user._id.toString()) {
+            return res.status(401).json({ message: 'Not authorized' });
+        }
+
+        if (invoice.type !== 'QUOTATION') {
+            return res.status(400).json({ message: 'Document is not a quotation' });
+        }
+
+        const business = await Business.findOne({ user: req.user._id });
+        if (!business) {
+            return res.status(404).json({ message: 'Business profile not found' });
+        }
+
+        // Generate new invoice number
+        business.invoiceCounter += 1;
+        const invoiceNumber = `${business.invoicePrefix}-${String(business.invoiceCounter).padStart(4, '0')}`;
+        await business.save();
+
+        // Create new Invoice instance instead of modifying the quotation
+        const newInvoice = new Invoice({
+            user: req.user._id,
+            business: business._id,
+            customer: invoice.customer,
+            invoiceNumber: invoiceNumber,
+            invoiceDate: new Date(),
+            dueDate: invoice.dueDate, // or reset
+            items: invoice.items,
+            type: 'INVOICE',
+            status: 'UNPAID', // Default initial status
+            subtotal: invoice.subtotal,
+            totalGst: invoice.totalGst,
+            total: invoice.total,
+            paidAmount: 0,
+            balanceAmount: invoice.total,
+            notes: invoice.notes,
+            termsAndConditions: invoice.termsAndConditions,
+            gstEnabled: invoice.gstEnabled,
+            // Copy calculated tax details
+            cgst: invoice.cgst,
+            sgst: invoice.sgst,
+            igst: invoice.igst,
+            roundOff: invoice.roundOff
+        });
+
+        // Deduct Stock
+        for (const item of newInvoice.items) {
+            if (item.product) {
+                const product = await Product.findById(item.product);
+                if (product) {
+                    product.stock -= item.quantity;
+                    await product.save();
+                }
+            }
+        }
+
+        // Update Customer Balance
+        const customer = await Customer.findById(newInvoice.customer);
+        if (customer) {
+            customer.balance += newInvoice.total;
+            await customer.save();
+        }
+
+        await newInvoice.save();
+
+        res.json(newInvoice);
+    } catch (error) {
+        console.error("Convert Error:", error);
+        res.status(500).json({ message: error.message });
+    }
+};
+
 module.exports = {
     getInvoices,
     getInvoice,
@@ -458,4 +540,5 @@ module.exports = {
     updateInvoice,
     deleteInvoice,
     getInvoiceStats,
+    convertToInvoice
 };

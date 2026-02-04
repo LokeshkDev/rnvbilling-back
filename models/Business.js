@@ -61,6 +61,15 @@ const businessSchema = new mongoose.Schema(
             type: String,
             default: '',
         },
+        theme: {
+            primaryColor: { type: String, default: '#2C3E50' },
+            secondaryColor: { type: String, default: '#34495E' },
+            accentColor: { type: String, default: '#3498DB' },
+            businessNameColor: { type: String, default: '#2C3E50' },
+            font: { type: String, default: 'Helvetica' },
+            titleFontSize: { type: Number, default: 24 },
+            bodyFontSize: { type: Number, default: 10 },
+        },
     },
     {
         timestamps: true,

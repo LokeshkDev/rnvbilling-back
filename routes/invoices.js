@@ -7,6 +7,7 @@ const {
     updateInvoice,
     deleteInvoice,
     getInvoiceStats,
+    convertToInvoice
 } = require('../controllers/invoiceController');
 const { generateInvoicePDF } = require('../utils/pdfGenerator');
 const { protect } = require('../middleware/auth');
@@ -22,5 +23,6 @@ router
     .delete(protect, deleteInvoice);
 
 router.get('/:id/pdf', protect, generateInvoicePDF);
+router.post('/:id/convert', protect, convertToInvoice);
 
 module.exports = router;

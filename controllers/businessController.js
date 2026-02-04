@@ -56,6 +56,14 @@ const getBusiness = async (req, res) => {
             accountNumber: business.bankDetails?.accountNumber || '',
             ifscCode: business.bankDetails?.ifscCode || '',
             branchName: business.bankDetails?.branch || '',
+            // Theme settings
+            primaryColor: business.theme?.primaryColor || '#2C3E50',
+            secondaryColor: business.theme?.secondaryColor || '#34495E',
+            accentColor: business.theme?.accentColor || '#3498DB',
+            businessNameColor: business.theme?.businessNameColor || '#2C3E50',
+            font: business.theme?.font || 'Helvetica',
+            titleFontSize: business.theme?.titleFontSize || 24,
+            bodyFontSize: business.theme?.bodyFontSize || 10,
             // logo and termsAndConditions are at root, so they carry over
         };
 
@@ -83,7 +91,15 @@ const createOrUpdateBusiness = async (req, res) => {
             ifscCode,
             branchName,
             termsAndConditions,
-            panNumber // Map PAN if present
+            panNumber, // Map PAN if present,
+            // Theme settings
+            primaryColor,
+            secondaryColor,
+            accentColor,
+            businessNameColor,
+            font,
+            titleFontSize,
+            bodyFontSize
         } = req.body;
 
         const businessData = {
@@ -106,7 +122,16 @@ const createOrUpdateBusiness = async (req, res) => {
                 ifscCode,
                 branch: branchName
             },
-            termsAndConditions
+            termsAndConditions,
+            theme: {
+                primaryColor,
+                secondaryColor,
+                accentColor,
+                businessNameColor,
+                font,
+                titleFontSize,
+                bodyFontSize
+            }
         };
 
         let business = await Business.findOne({ user: req.user._id });
