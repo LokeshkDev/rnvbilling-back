@@ -20,6 +20,10 @@ const generateInvoicePDF = async (req, res) => {
             return res.status(400).json({ message: 'Business profile not found. Please complete your profile first.' });
         }
 
+        if (!invoice.customer) {
+            return res.status(400).json({ message: 'Customer not found' });
+        }
+
         // Check if invoice belongs to user
         if (invoice.user.toString() !== req.user._id.toString()) {
             return res.status(401).json({ message: 'Not authorized' });
@@ -31,17 +35,12 @@ const generateInvoicePDF = async (req, res) => {
         // Set response headers
         res.setHeader('Content-Type', 'application/pdf');
 
-        const safeCustomerName = invoice.customer.name.replace(/[^a-z0-9]/gi, '_').toLowerCase();
-
-        // Handle filename prefix - if invoiceNumber already has RNV, don't double it
-        let filenamePrefix = '';
-        if (!invoice.invoiceNumber.startsWith('RNV-')) {
-            filenamePrefix = invoice.type === 'QUOTATION' ? 'RNV-QTN-' : 'RNV-INV-';
-        }
+        const customerName = invoice.customer?.name || 'Customer';
+        const safeCustomerName = customerName.replace(/[^a-z0-9]/gi, '_');
 
         res.setHeader(
             'Content-Disposition',
-            `attachment; filename=${filenamePrefix}${invoice.invoiceNumber}-${safeCustomerName}.pdf`
+            `attachment; filename="${safeCustomerName}.pdf"`
         );
 
         // Pipe PDF to response
@@ -112,21 +111,11 @@ const generateInvoicePDF = async (req, res) => {
             .font(fontRegular)
             .fontSize(bodyFontSize)
             .fillColor(secondaryColor)
-            .text(
-                `${invoice.business.address?.street || ''}, ${invoice.business.address?.city || ''
-                }`,
-                50,
-                80
-            )
-            .text(
-                `${invoice.business.address?.state || ''} - ${invoice.business.address?.pincode || ''
-                }`,
-                50,
-                75 + 20
-            )
-            .text(`GSTIN: ${invoice.business.gstin}`, 50, 110)
-            .text(`Phone: ${invoice.business.contact?.phone || ''}`, 50, 125)
-            .text(`Email: ${invoice.business.contact?.email || ''}`, 50, 140);
+            .text(`${invoice.business.address?.street || ''}, ${invoice.business.address?.city || ''}`, 50, 80, { width: 300 })
+            .text(`${invoice.business.address?.state || ''} - ${invoice.business.address?.pincode || ''}`, { width: 300 })
+            .text(`GSTIN: ${invoice.business.gstin}`, { width: 300 })
+            .text(`Phone: ${invoice.business.contact?.phone || ''}`, { width: 300 })
+            .text(`Email: ${invoice.business.contact?.email || ''}`, { width: 300 });
 
         // Invoice title
         doc
@@ -134,7 +123,7 @@ const generateInvoicePDF = async (req, res) => {
             .fontSize(20)
             .fillColor(accentColor)
             .text(
-                invoice.type === 'QUOTATION' ? 'QUOTATION' : 'TAX INVOICE',
+                invoice.type === 'QUOTATION' ? 'QUOTATION' : 'INVOICE',
                 400,
                 50,
                 { align: 'right' }
@@ -142,52 +131,45 @@ const generateInvoicePDF = async (req, res) => {
 
         // Invoice details
         const getDisplayNumber = (num) => {
-            if (num.startsWith('RNV-')) return num;
+            const expectedTypePrefix = invoice.type === 'QUOTATION' ? 'RNV-QTN-' : 'RNV-INV-';
 
-            const typePrefix = invoice.type === 'QUOTATION' ? 'QTN' : 'INV';
-            const rnvPrefix = `RNV-${typePrefix}-`;
+            // If it already starts with the right prefix, return as is
+            if (num.startsWith(expectedTypePrefix)) return num;
 
-            if (num.startsWith(`${typePrefix}-`)) return `RNV-${num}`;
-            return `${rnvPrefix}${num}`;
+            // Strip any existing RNV-INV- or RNV-QTN- or INV- or QTN-
+            const cleanNum = num.replace(/^RNV-(INV|QTN)-/, '').replace(/^(INV|QTN)-/, '');
+
+            return `${expectedTypePrefix}${cleanNum}`;
         };
 
         doc
             .fontSize(10)
             .fillColor(secondaryColor)
             .text(`${invoice.type === 'QUOTATION' ? 'Quotation No' : 'Invoice No'}: ${getDisplayNumber(invoice.invoiceNumber)}`, 400, 80, { align: 'right' })
-            .text(`Date: ${formatDate(invoice.invoiceDate)}`, 400, 95, {
-                align: 'right',
-            });
+            .text(`Date: ${formatDate(invoice.invoiceDate)}`, 400, doc.y, { align: 'right' });
 
         if (invoice.dueDate) {
-            doc.text(`Due Date: ${formatDate(invoice.dueDate)}`, 400, 110, {
-                align: 'right',
-            });
+            doc.text(`Due Date: ${formatDate(invoice.dueDate)}`, 400, doc.y, { align: 'right' });
         }
 
         // E-way Bill details if present
         if (invoice.ewayBillNo) {
-            doc.text(`E-Way Bill No: ${invoice.ewayBillNo}`, 400, 125, {
-                align: 'right',
-            });
+            doc.text(`E-Way Bill No: ${invoice.ewayBillNo}`, 400, doc.y, { align: 'right' });
             if (invoice.vehicleNo) {
-                doc.text(`Vehicle No: ${invoice.vehicleNo}`, 400, 140, {
-                    align: 'right',
-                });
+                doc.text(`Vehicle No: ${invoice.vehicleNo}`, 400, doc.y, { align: 'right' });
             }
             if (invoice.transportMode) {
-                doc.text(`Mode: ${invoice.transportMode}`, 400, 155, {
-                    align: 'right',
-                });
+                doc.text(`Mode: ${invoice.transportMode}`, 400, doc.y, { align: 'right' });
             }
         }
 
         // Line separator
+        const separatorY = Math.max(175, doc.y + 20);
         doc
             .strokeColor('#BDC3C7')
             .lineWidth(1)
-            .moveTo(50, 170)
-            .lineTo(550, 170)
+            .moveTo(50, separatorY)
+            .lineTo(550, separatorY)
             .stroke();
 
         // Customer details
@@ -195,32 +177,23 @@ const generateInvoicePDF = async (req, res) => {
             .fontSize(12)
             .fillColor(primaryColor)
             .font(fontBold)
-            .text('Bill To:', 50, 190);
+            .text('Bill To:', 50, separatorY + 20);
 
         doc
             .font(fontRegular)
-            .text(invoice.customer.name, 50, 210)
-            .text(
-                `${invoice.customer.address?.street || ''}, ${invoice.customer.address?.city || ''
-                }`,
-                50,
-                225
-            )
-            .text(
-                `${invoice.customer.address?.state || ''} - ${invoice.customer.address?.pincode || ''
-                }`,
-                50,
-                240
-            );
+            .fontSize(10)
+            .text(invoice.customer.name, 50, doc.y + 5, { width: 320 })
+            .text(`${invoice.customer.address?.street || ''}, ${invoice.customer.address?.city || ''}`, { width: 320 })
+            .text(`${invoice.customer.address?.state || ''} - ${invoice.customer.address?.pincode || ''}`, { width: 320 });
 
         if (invoice.customer.gstin) {
-            doc.text(`GSTIN: ${invoice.customer.gstin}`, 50, 255);
+            doc.text(`GSTIN: ${invoice.customer.gstin}`, { width: 320 });
         }
 
-        doc.text(`Phone: ${invoice.customer.phone}`, 50, 270);
+        doc.text(`Phone: ${invoice.customer.phone}`, { width: 320 });
 
         // Items table
-        const tableTop = 320;
+        const tableTop = Math.max(320, doc.y + 30);
         const tableHeaders = [
             { label: 'S.No', x: 50, width: 30 },
             { label: 'Description', x: 80, width: 120 },
@@ -263,7 +236,7 @@ const generateInvoicePDF = async (req, res) => {
             const processesHeight = processes.length > 0 ? (processes.length * 15) : 20;
             const rowHeight = Math.max(25, doc.heightOfString(item.productName, { width: 120 }) + 10, processesHeight + 10);
 
-            if (yPosition + rowHeight > 750) {
+            if (yPosition + rowHeight > doc.page.height - 70) {
                 doc.addPage();
                 yPosition = 50;
             }
@@ -306,7 +279,7 @@ const generateInvoicePDF = async (req, res) => {
 
         // Helper to check for space and add page
         const checkPageBreak = (neededHeight) => {
-            if (yPosition + neededHeight > 750) {
+            if (yPosition + neededHeight > doc.page.height - 70) {
                 doc.addPage();
                 yPosition = 50;
                 return true;
@@ -525,6 +498,8 @@ const generateInvoicePDF = async (req, res) => {
 
         // Footer - ONLY on the last page
         const pageHeight = doc.page.height;
+        // Disable auto page break for footer to prevent it triggering a new page
+        doc.page.margins.bottom = 0;
         doc
             .fontSize(8)
             .fillColor('#95A5A6')
@@ -532,7 +507,7 @@ const generateInvoicePDF = async (req, res) => {
             .text(
                 'This is a computer-generated invoice and does not require a signature.',
                 50,
-                pageHeight - 40,
+                pageHeight - 30,
                 { align: 'center', width: 500 }
             );
 

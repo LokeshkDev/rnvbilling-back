@@ -51,9 +51,17 @@ const businessSchema = new mongoose.Schema(
         },
         invoicePrefix: {
             type: String,
-            default: 'INV',
+            default: 'RNV-INV',
         },
         invoiceCounter: {
+            type: Number,
+            default: 0,
+        },
+        quotationPrefix: {
+            type: String,
+            default: 'RNV-QTN',
+        },
+        quotationCounter: {
             type: Number,
             default: 0,
         },

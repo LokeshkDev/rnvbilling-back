@@ -76,11 +76,17 @@ const createInvoice = async (req, res) => {
             return res.status(404).json({ message: 'Business profile not found. Please complete business profile first.' });
         }
 
-        // Generate invoice number
-        business.invoiceCounter += 1;
-        const invoiceNumber = `${business.invoicePrefix}-${String(
-            business.invoiceCounter
-        ).padStart(4, '0')}`;
+        // Generate document number
+        let invoiceNumber;
+        if (type === 'QUOTATION') {
+            business.quotationCounter = (business.quotationCounter || 0) + 1;
+            const prefix = business.quotationPrefix || 'RNV-QTN';
+            invoiceNumber = `${prefix}-${String(business.quotationCounter).padStart(4, '0')}`;
+        } else {
+            business.invoiceCounter = (business.invoiceCounter || 0) + 1;
+            const prefix = business.invoicePrefix || 'RNV-INV';
+            invoiceNumber = `${prefix}-${String(business.invoiceCounter).padStart(4, '0')}`;
+        }
         await business.save();
 
         // Get customer
@@ -477,7 +483,8 @@ const convertToInvoice = async (req, res) => {
 
         // Generate new invoice number
         business.invoiceCounter += 1;
-        const invoiceNumber = `${business.invoicePrefix}-${String(business.invoiceCounter).padStart(4, '0')}`;
+        const prefix = business.invoicePrefix || 'RNV-INV';
+        const invoiceNumber = `${prefix}-${String(business.invoiceCounter).padStart(4, '0')}`;
         await business.save();
 
         // Create new Invoice instance instead of modifying the quotation
