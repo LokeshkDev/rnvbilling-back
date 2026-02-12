@@ -194,15 +194,26 @@ const generateInvoicePDF = async (req, res) => {
 
         // Items table
         const tableTop = Math.max(320, doc.y + 30);
+
+        // Determine if we should show Part no column
+        const hasPartNo = invoice.items.some(item => item.hsnCode && item.hsnCode.trim() !== '' && item.hsnCode !== '-');
+
         const tableHeaders = [
             { label: 'S.No', x: 50, width: 30 },
-            { label: 'Description', x: 80, width: 120 },
-            { label: 'Part no', x: 200, width: 60 },
-            { label: 'Tool', x: 260, width: 90 },
-            { label: 'Qty', x: 350, width: 40 },
-            { label: 'Price', x: 390, width: 70 },
-            { label: 'Amount', x: 460, width: 90 },
+            { label: 'Description', x: 80, width: hasPartNo ? 120 : 160 },
         ];
+
+        if (hasPartNo) {
+            tableHeaders.push({ label: 'Part no', x: 200, width: 60 });
+        }
+
+        const toolX = hasPartNo ? 260 : 240;
+        const toolWidth = hasPartNo ? 90 : 110;
+
+        tableHeaders.push({ label: 'Tool', x: toolX, width: toolWidth });
+        tableHeaders.push({ label: 'Qty', x: 350, width: 40 });
+        tableHeaders.push({ label: 'Price', x: 390, width: 70 });
+        tableHeaders.push({ label: 'Amount', x: 460, width: 90 });
 
         // Table header background
         doc
@@ -232,9 +243,17 @@ const generateInvoicePDF = async (req, res) => {
         doc.fontSize(9).fillColor(secondaryColor).font(fontRegular);
 
         invoice.items.forEach((item, index) => {
-            const processes = item.processes || [];
-            const processesHeight = processes.length > 0 ? (processes.length * 15) : 20;
-            const rowHeight = Math.max(25, doc.heightOfString(item.productName, { width: 120 }) + 10, processesHeight + 10);
+            const validProcesses = (item.processes || []).filter(p => (p.name && p.name.trim() !== '') || (p.price && p.price > 0));
+            const hasTool = item.tool && item.tool.trim() !== '';
+
+            let toolLines = 0;
+            if (hasTool) toolLines += 1;
+            toolLines += validProcesses.length;
+            if (toolLines === 0) toolLines = 1; // for '-'
+
+            const toolColumnHeight = toolLines * 15;
+            const descriptionWidth = hasPartNo ? 120 : 160;
+            const rowHeight = Math.max(25, doc.heightOfString(item.productName, { width: descriptionWidth }) + 10, toolColumnHeight + 10);
 
             if (yPosition + rowHeight > doc.page.height - 70) {
                 doc.addPage();
@@ -242,25 +261,38 @@ const generateInvoicePDF = async (req, res) => {
             }
 
             doc.text(String(index + 1), 50, yPosition, { width: 30 });
-            doc.text(item.productName, 80, yPosition, { width: 120 });
-            doc.text(item.hsnCode || '-', 200, yPosition, { width: 60 });
+            doc.text(item.productName, 80, yPosition, { width: descriptionWidth });
 
-            // Render Processes
-            if (processes.length > 0) {
-                let processY = yPosition;
-                processes.forEach(p => {
-                    doc.text(p.name, 260, processY, { width: 90 });
-                    doc.text(formatCurrency(p.price), 390, processY, { width: 70, align: 'right' });
-                    processY += 15;
+            if (hasPartNo) {
+                doc.text(item.hsnCode || '-', 200, yPosition, { width: 60 });
+            }
+
+            // Render Tool & Processes
+            let currentToolY = yPosition;
+            if (hasTool) {
+                doc.text(item.tool, toolX, currentToolY, { width: toolWidth });
+                // If it's just the tool and no processes, we might want to show the unit price if processes are empty
+                if (validProcesses.length === 0) {
+                    doc.text(formatCurrency(item.price), 390, currentToolY, { width: 70, align: 'right' });
+                }
+                currentToolY += 15;
+            }
+
+            if (validProcesses.length > 0) {
+                validProcesses.forEach(p => {
+                    doc.text(p.name || 'Process', toolX, currentToolY, { width: toolWidth });
+                    doc.text(formatCurrency(p.price), 390, currentToolY, { width: 70, align: 'right' });
+                    currentToolY += 15;
                 });
-            } else {
-                doc.text(item.tool || '-', 260, yPosition, { width: 90 });
+            } else if (!hasTool) {
+                doc.text('-', toolX, yPosition, { width: toolWidth });
                 doc.text(formatCurrency(item.price), 390, yPosition, { width: 70, align: 'right' });
             }
 
             // Quantity
             doc.text(String(item.quantity), 350, yPosition, { width: 40, align: 'right' });
 
+            // Amount (Total for this item)
             doc.text(formatCurrency(item.price * item.quantity), 460, yPosition, {
                 width: 90,
                 align: 'right',
