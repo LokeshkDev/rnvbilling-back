@@ -64,7 +64,7 @@ const getInvoice = async (req, res) => {
 // @access  Private
 const createInvoice = async (req, res) => {
     try {
-        const { customer, customerId, items, type, notes, date, dueDate, gstEnabled } = req.body;
+        const { customer, customerId, items, type, notes, date, dueDate, gstEnabled, termsAndConditions } = req.body;
 
         // Handle input variations (frontend might send 'customer' or 'customerId')
         const finalCustomerId = customerId || customer;
@@ -169,7 +169,7 @@ const createInvoice = async (req, res) => {
             items: processedItems,
             type: type || 'INVOICE',
             notes,
-            termsAndConditions: business.termsAndConditions, // Copy default terms
+            termsAndConditions: termsAndConditions || business.termsAndConditions, // Use provided or business default
             gstEnabled: gstEnabled !== undefined ? gstEnabled : true
         });
 
@@ -266,7 +266,7 @@ const updateInvoice = async (req, res) => {
         }
 
         // 2. Prepare new data
-        const { customer, customerId, items, type, notes, date, dueDate, gstEnabled } = req.body;
+        const { customer, customerId, items, type, notes, date, dueDate, gstEnabled, termsAndConditions } = req.body;
         const finalCustomerId = customerId || customer || invoice.customer;
 
         // Get business to check logic
@@ -340,6 +340,7 @@ const updateInvoice = async (req, res) => {
         invoice.notes = notes !== undefined ? notes : invoice.notes;
         invoice.invoiceDate = date || invoice.invoiceDate;
         invoice.dueDate = dueDate || invoice.dueDate;
+        if (termsAndConditions !== undefined) invoice.termsAndConditions = termsAndConditions;
         if (gstEnabled !== undefined) invoice.gstEnabled = gstEnabled;
 
         // Recalculate Totals

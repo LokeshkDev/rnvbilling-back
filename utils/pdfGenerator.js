@@ -168,7 +168,7 @@ const generateInvoicePDF = async (req, res) => {
 
         const detailsBottomY = doc.y;
 
-        // Line separator
+        // Line separator (Reduced padding)
         const separatorY = Math.max(headerBottomY, detailsBottomY) + 5;
         doc
             .strokeColor('#BDC3C7')
@@ -484,7 +484,6 @@ const generateInvoicePDF = async (req, res) => {
         }
 
         // Terms and Bank Details side by side
-        const bottomSectionY = yPosition + 10;
         const termsWidth = 240;
         const bankWidth = 240;
         const bankX = 310;
@@ -500,7 +499,7 @@ const generateInvoicePDF = async (req, res) => {
         }
 
         const columnHeight = Math.max(termsHeight, bankHeight);
-        checkPageBreak(columnHeight);
+        checkPageBreak(columnHeight + 40); // Add margin
 
         const currentY = yPosition + 10;
 
@@ -530,11 +529,12 @@ const generateInvoicePDF = async (req, res) => {
             doc
                 .fontSize(9)
                 .fillColor(secondaryColor)
-                .font(fontRegular)
-                .text(`Account Name: ${invoice.business.bankDetails.accountName || ''}`, bankX, currentY + 15, { width: bankWidth })
-                .text(`Account Number: ${invoice.business.bankDetails.accountNumber}`, bankX, doc.y + 2, { width: bankWidth })
-                .text(`IFSC Code: ${invoice.business.bankDetails.ifscCode || ''}`, bankX, doc.y + 2, { width: bankWidth })
-                .text(`Bank: ${invoice.business.bankDetails.bankName || ''}, ${invoice.business.bankDetails.branch || ''}`, bankX, doc.y + 2, { width: bankWidth });
+                .font(fontRegular);
+
+            doc.text(`Account Name: ${invoice.business.bankDetails.accountName || ''}`, bankX, currentY + 15, { width: bankWidth });
+            doc.text(`Account Number: ${invoice.business.bankDetails.accountNumber}`, bankX, doc.y + 2, { width: bankWidth });
+            doc.text(`IFSC Code: ${invoice.business.bankDetails.ifscCode || ''}`, bankX, doc.y + 2, { width: bankWidth });
+            doc.text(`Bank: ${invoice.business.bankDetails.bankName || ''}, ${invoice.business.bankDetails.branch || ''}`, bankX, doc.y + 2, { width: bankWidth });
         }
 
         yPosition = Math.max(doc.y, currentY + columnHeight) + 20;
