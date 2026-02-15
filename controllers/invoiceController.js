@@ -85,7 +85,7 @@ const createInvoice = async (req, res) => {
         } else {
             business.invoiceCounter = (business.invoiceCounter || 0) + 1;
             const prefix = business.invoicePrefix || 'RNV-INV';
-            invoiceNumber = `${prefix}-${String(business.invoiceCounter).padStart(4, '0')}`;
+            invoiceNumber = `${prefix}-${String(business.invoiceCounter).padStart(3, '0')}`;
         }
         await business.save();
 
