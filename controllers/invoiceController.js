@@ -81,7 +81,7 @@ const createInvoice = async (req, res) => {
         if (type === 'QUOTATION') {
             business.quotationCounter = (business.quotationCounter || 0) + 1;
             const prefix = business.quotationPrefix || 'RNV-QTN';
-            invoiceNumber = `${prefix}-${String(business.quotationCounter).padStart(4, '0')}`;
+            invoiceNumber = `${prefix}-${String(business.quotationCounter).padStart(3, '0')}`;
         } else {
             business.invoiceCounter = (business.invoiceCounter || 0) + 1;
             const prefix = business.invoicePrefix || 'RNV-INV';

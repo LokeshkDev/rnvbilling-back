@@ -117,6 +117,9 @@ const generateInvoicePDF = async (req, res) => {
             .text(`Phone: ${invoice.business.contact?.phone || ''}`, { width: 300 })
             .text(`Email: ${invoice.business.contact?.email || ''}`, { width: 300 });
 
+        // Capture left side height
+        const headerBottomY = doc.y;
+
         // Invoice title
         doc
             .font(fontBold)
@@ -163,8 +166,10 @@ const generateInvoicePDF = async (req, res) => {
             }
         }
 
+        const detailsBottomY = doc.y;
+
         // Line separator
-        const separatorY = Math.max(175, doc.y + 20);
+        const separatorY = Math.max(headerBottomY, detailsBottomY) + 5;
         doc
             .strokeColor('#BDC3C7')
             .lineWidth(1)
@@ -177,12 +182,12 @@ const generateInvoicePDF = async (req, res) => {
             .fontSize(12)
             .fillColor(primaryColor)
             .font(fontBold)
-            .text('Bill To:', 50, separatorY + 20);
+            .text('Bill To:', 50, separatorY + 5);
 
         doc
             .font(fontRegular)
             .fontSize(10)
-            .text(invoice.customer.name, 50, doc.y + 5, { width: 320 })
+            .text(invoice.customer.name, 50, doc.y + 2, { width: 320 })
             .text(`${invoice.customer.address?.street || ''}, ${invoice.customer.address?.city || ''}`, { width: 320 })
             .text(`${invoice.customer.address?.state || ''} - ${invoice.customer.address?.pincode || ''}`, { width: 320 });
 
@@ -192,8 +197,17 @@ const generateInvoicePDF = async (req, res) => {
 
         doc.text(`Phone: ${invoice.customer.phone}`, { width: 320 });
 
+        // Border line below customer address
+        const addressBottomY = doc.y + 5;
+        doc
+            .strokeColor('#BDC3C7')
+            .lineWidth(0.5)
+            .moveTo(50, addressBottomY)
+            .lineTo(550, addressBottomY)
+            .stroke();
+
         // Items table
-        const tableTop = Math.max(320, doc.y + 30);
+        const tableTop = addressBottomY + 5;
 
         // Determine if we should show Part no column
         const hasPartNo = invoice.items.some(item => item.hsnCode && item.hsnCode.trim() !== '' && item.hsnCode !== '-');
@@ -469,64 +483,61 @@ const generateInvoicePDF = async (req, res) => {
             yPosition += notesHeight - 15;
         }
 
-        // Terms and conditions
+        // Terms and Bank Details side by side
+        const bottomSectionY = yPosition + 10;
+        const termsWidth = 240;
+        const bankWidth = 240;
+        const bankX = 310;
+
+        let termsHeight = 0;
         if (invoice.termsAndConditions) {
-            const termsHeight = doc.heightOfString(invoice.termsAndConditions, { width: 500 }) + 40;
-            checkPageBreak(termsHeight);
-
-            doc
-                .fontSize(10)
-                .fillColor(primaryColor)
-                .font(fontBold)
-                .text('Terms & Conditions:', 50, yPosition);
-            yPosition += 15;
-            doc
-                .fontSize(9)
-                .fillColor(secondaryColor)
-                .font(fontRegular)
-                .text(invoice.termsAndConditions, 50, yPosition, { width: 500 });
-            yPosition += termsHeight - 15;
+            termsHeight = doc.heightOfString(invoice.termsAndConditions, { width: termsWidth }) + 30;
         }
 
-        // Bank details
+        let bankHeight = 0;
         if (invoice.business.bankDetails?.accountNumber) {
-            checkPageBreak(100);
+            bankHeight = 100; // Estimated height for bank details
+        }
 
+        const columnHeight = Math.max(termsHeight, bankHeight);
+        checkPageBreak(columnHeight);
+
+        const currentY = yPosition + 10;
+
+        // Terms and conditions (Left Column)
+        if (invoice.termsAndConditions) {
             doc
                 .fontSize(10)
                 .fillColor(primaryColor)
                 .font(fontBold)
-                .text('Bank Details:', 50, yPosition);
-            yPosition += 15;
+                .text('Terms & Conditions:', 50, currentY);
+
             doc
                 .fontSize(9)
                 .fillColor(secondaryColor)
                 .font(fontRegular)
-                .text(
-                    `Account Name: ${invoice.business.bankDetails.accountName || ''}`,
-                    50,
-                    yPosition
-                );
-            yPosition += 15;
-            doc.text(
-                `Account Number: ${invoice.business.bankDetails.accountNumber}`,
-                50,
-                yPosition
-            );
-            yPosition += 15;
-            doc.text(
-                `IFSC Code: ${invoice.business.bankDetails.ifscCode || ''}`,
-                50,
-                yPosition
-            );
-            yPosition += 15;
-            doc.text(
-                `Bank: ${invoice.business.bankDetails.bankName || ''}, ${invoice.business.bankDetails.branch || ''
-                }`,
-                50,
-                yPosition
-            );
+                .text(invoice.termsAndConditions, 50, currentY + 15, { width: termsWidth });
         }
+
+        // Bank details (Right Column)
+        if (invoice.business.bankDetails?.accountNumber) {
+            doc
+                .fontSize(10)
+                .fillColor(primaryColor)
+                .font(fontBold)
+                .text('Bank Details:', bankX, currentY);
+
+            doc
+                .fontSize(9)
+                .fillColor(secondaryColor)
+                .font(fontRegular)
+                .text(`Account Name: ${invoice.business.bankDetails.accountName || ''}`, bankX, currentY + 15, { width: bankWidth })
+                .text(`Account Number: ${invoice.business.bankDetails.accountNumber}`, bankX, doc.y + 2, { width: bankWidth })
+                .text(`IFSC Code: ${invoice.business.bankDetails.ifscCode || ''}`, bankX, doc.y + 2, { width: bankWidth })
+                .text(`Bank: ${invoice.business.bankDetails.bankName || ''}, ${invoice.business.bankDetails.branch || ''}`, bankX, doc.y + 2, { width: bankWidth });
+        }
+
+        yPosition = Math.max(doc.y, currentY + columnHeight) + 20;
 
         // Footer - ONLY on the last page
         const pageHeight = doc.page.height;
